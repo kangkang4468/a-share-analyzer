@@ -412,13 +412,15 @@ def calculate_stock_score_task(item):
     return code, score
 
 
-def inject_data_into_html(html_path, all_stocks):
+def inject_data_into_html(html_path, all_stocks, favorites):
     """将股票数据静态注入到 HTML 的内联标记区域中"""
     with open(html_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
     stocks_json = json.dumps(all_stocks, ensure_ascii=False)
-    new_block = f"        // ===STOCKS_DATA_START===\n        window.ALL_STOCKS_DICT_RAW = {stocks_json};\n        // ===STOCKS_DATA_END==="
+    fav_json = json.dumps(favorites, ensure_ascii=False)
+    
+    new_block = f"        // ===STOCKS_DATA_START===\n        window.ALL_STOCKS_DICT_RAW = {stocks_json};\n        window.FAVORITE_STOCKS_RAW = {fav_json};\n        // ===STOCKS_DATA_END==="
 
     pattern = r'// ===STOCKS_DATA_START===.*?// ===STOCKS_DATA_END==='
     updated, count = re.subn(pattern, new_block, content, flags=re.DOTALL)
@@ -435,10 +437,19 @@ def inject_data_into_html(html_path, all_stocks):
 def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     html_path = os.path.join(current_dir, "stock_analysis.html")
+    fav_path = os.path.join(current_dir, "favorites.json")
 
     if not os.path.exists(html_path):
         print(f"[!] 错误：未找到 {html_path}")
         return
+        
+    favorites = []
+    if os.path.exists(fav_path):
+        try:
+            with open(fav_path, 'r', encoding='utf-8') as f:
+                favorites = json.load(f)
+        except Exception as e:
+            print(f"[!] 读取 favorites.json 失败: {e}")
 
     print("=" * 60)
     print(" A股与港股智能分析终端 - 行情与量化打分更新引擎")
@@ -504,7 +515,7 @@ def main():
     print("-" * 60)
     print(f"3. 正在将 {total_stocks} 只股票实盘数据静态注入 stock_analysis.html ...")
 
-    if inject_data_into_html(html_path, all_stocks):
+    if inject_data_into_html(html_path, all_stocks, favorites):
         size_kb = os.path.getsize(html_path) / 1024
         elapsed = time.time() - start_time
         print(f"\n[★] 注入成功！HTML 文件大小: {size_kb:.0f} KB")
