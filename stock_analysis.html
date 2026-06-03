@@ -2419,25 +2419,56 @@
         }
 
         function saveFavorites() {
-            showToast('⭐ 自选股已接入代码库持久化配置，增删请前往修改 favorites.json 文件。');
+            try {
+                const favCodes = favoriteStocks.map(stock => String(stock.code));
+                // 1. 保存在 localStorage 作为双保险
+                localStorage.setItem('my_favorite_stocks', JSON.stringify(favCodes));
+                
+                // 2. 尝试发送给本地 server.py 以写入 favorites.json
+                fetch('/api/save_favorites', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(favCodes)
+                }).then(res => res.json()).then(data => {
+                    if (data.status === 'success') {
+                        console.log('Successfully saved to favorites.json via API.');
+                    }
+                }).catch(err => {
+                    console.log('Local server API not available, fell back to localStorage.');
+                });
+            } catch (e) {
+                console.error('Failed to save favorites:', e);
+            }
+            showToast('⭐ 自选股更新已持久化', false);
         }
 
         function loadFavorites() {
             try {
-                if (window.FAVORITE_STOCKS_RAW && Array.isArray(window.FAVORITE_STOCKS_RAW)) {
-                    favoriteStocks = [];
-                    const allRaw = window.ALL_STOCKS_DICT_RAW || [];
-                    window.FAVORITE_STOCKS_RAW.forEach(codeStr => {
-                        const raw = allRaw.find(s => s.c === String(codeStr));
-                        if (raw) {
-                            favoriteStocks.push(getUnifiedStock(raw.c, raw.n, raw.p));
-                        } else {
-                            favoriteStocks.push(getUnifiedStock(String(codeStr), String(codeStr), ''));
-                        }
-                    });
-                } else {
-                    favoriteStocks = [];
+                favoriteStocks = [];
+                const allRaw = window.ALL_STOCKS_DICT_RAW || [];
+                
+                // 1. 尝试从 localStorage 读取
+                let savedCodes = null;
+                const localStr = localStorage.getItem('my_favorite_stocks');
+                if (localStr) {
+                    savedCodes = JSON.parse(localStr);
                 }
+                
+                // 2. 如果没有 localStorage 记录，则使用原来的 window.FAVORITE_STOCKS_RAW 作为默认值
+                if (!savedCodes || !Array.isArray(savedCodes)) {
+                    savedCodes = (window.FAVORITE_STOCKS_RAW && Array.isArray(window.FAVORITE_STOCKS_RAW)) 
+                        ? window.FAVORITE_STOCKS_RAW 
+                        : [];
+                }
+
+                savedCodes.forEach(codeStr => {
+                    const raw = allRaw.find(s => s.c === String(codeStr));
+                    if (raw) {
+                        favoriteStocks.push(getUnifiedStock(raw.c, raw.n, raw.p));
+                    } else {
+                        favoriteStocks.push(getUnifiedStock(String(codeStr), String(codeStr), ''));
+                    }
+                });
             } catch (e) {
                 console.error('loadFavorites failed:', e);
                 favoriteStocks = [];
