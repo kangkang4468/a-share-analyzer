@@ -1375,9 +1375,9 @@
            HEADER: 标志与大盘风向标
            ========================================== -->
         <header>
-            <div class="logo-section" style="display: flex; align-items: center; gap: 15px;">
+            <div class="logo-section" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                 <h1>A股与港股智能多因子稳妥量化分析与评分系统 <span>Beta v1.3</span></h1>
-                <button id="manualUpdateBtn" style="background: var(--color-accent); color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; box-shadow: 0 0 10px rgba(0, 122, 255, 0.4); transition: all 0.3s ease;" onmouseover="this.style.boxShadow='0 0 15px rgba(0,122,255,0.8)'; this.style.transform='translateY(-1px)';" onmouseout="this.style.boxShadow='0 0 10px rgba(0, 122, 255, 0.4)'; this.style.transform='translateY(0)';">
+                <button id="manualUpdateBtn" style="white-space: nowrap; flex-shrink: 0; background: var(--color-accent); color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; box-shadow: 0 0 10px rgba(0, 122, 255, 0.4); transition: all 0.3s ease;" onmouseover="this.style.boxShadow='0 0 15px rgba(0,122,255,0.8)'; this.style.transform='translateY(-1px)';" onmouseout="this.style.boxShadow='0 0 10px rgba(0, 122, 255, 0.4)'; this.style.transform='translateY(0)';">
                     <span style="margin-right: 4px;">🔄</span> 手动更新数据
                 </button>
             </div>
@@ -4655,9 +4655,13 @@
                 }
             }
 
-            this.innerHTML = '<span style="margin-right: 4px;">⏳</span> 正在触发远程云端更新...';
-            this.style.background = 'var(--color-neutral)';
-            this.style.pointerEvents = 'none';
+            const btn = this;
+            const originalHTML = btn.innerHTML;
+            const originalBg = btn.style.background;
+
+            btn.innerHTML = '<span style="margin-right: 4px;">⏳</span> 正在触发远程云端更新...';
+            btn.style.background = 'var(--color-neutral)';
+            btn.style.pointerEvents = 'none';
 
             try {
                 const repo = 'kangkang4468/a-share-analyzer';
@@ -4675,23 +4679,31 @@
 
                 if (response.ok || response.status === 204) {
                     showToast('✅ 更新指令已发送至云端！请等待 1-2 分钟后刷新本页面查看最新实盘数据。');
-                    this.innerHTML = '<span style="margin-right: 4px;">✅</span> 触发成功';
-                    this.style.background = 'var(--color-down)';
+                    btn.innerHTML = '<span style="margin-right: 4px;">✅</span> 触发成功';
+                    btn.style.background = 'var(--color-down)';
+                    
+                    // 5秒后恢复按钮原始状态，允许再次点击
+                    setTimeout(() => {
+                        btn.innerHTML = originalHTML;
+                        btn.style.background = originalBg;
+                        btn.style.pointerEvents = 'auto';
+                    }, 5000);
+
                 } else {
                     const err = await response.text();
                     console.error('Trigger error:', err);
                     showToast('❌ 触发失败，可能是 Token 错误或无效。已清除旧 Token，请重试。');
                     localStorage.removeItem('github_pat');
-                    this.innerHTML = '<span style="margin-right: 4px;">🔄</span> 重新触发';
-                    this.style.background = 'var(--color-up)';
-                    this.style.pointerEvents = 'auto';
+                    btn.innerHTML = '<span style="margin-right: 4px;">🔄</span> 重新触发';
+                    btn.style.background = 'var(--color-up)';
+                    btn.style.pointerEvents = 'auto';
                 }
             } catch (error) {
                 console.error('Network error:', error);
                 showToast('❌ 网络请求失败，请检查网络并重试。');
-                this.innerHTML = '<span style="margin-right: 4px;">🔄</span> 重新触发';
-                this.style.background = 'var(--color-up)';
-                this.style.pointerEvents = 'auto';
+                btn.innerHTML = '<span style="margin-right: 4px;">🔄</span> 重新触发';
+                btn.style.background = 'var(--color-up)';
+                btn.style.pointerEvents = 'auto';
             }
         });
     </script>
