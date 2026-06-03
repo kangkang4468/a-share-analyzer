@@ -1351,6 +1351,87 @@
             padding: 1px 6px;
             border-radius: 4px;
         }
+        /* 弹窗样式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .modal-overlay.show {
+            display: flex;
+        }
+        .modal-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 25px;
+            border-radius: 16px;
+            width: 400px;
+            max-width: 90%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+        }
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+        .modal-input {
+            width: 100%;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            color: #fff;
+            margin-bottom: 15px;
+            font-family: var(--font-family);
+        }
+        .modal-input:focus {
+            outline: none;
+            border-color: var(--color-accent);
+        }
+        .modal-label {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            margin-bottom: 5px;
+            display: block;
+        }
+        .modal-btn-group {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .modal-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            transition: var(--transition-smooth);
+        }
+        .modal-btn-cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        .modal-btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .modal-btn-confirm {
+            background: var(--color-accent);
+            color: #fff;
+        }
+        .modal-btn-confirm:hover {
+            background: #0066d6;
+        }
     </style>
     <!-- 全A股实盘股价大名录（由 get_stocks.py 自动注入更新） -->
     <script>
@@ -1448,6 +1529,9 @@
                     <div id="favoriteEmpty" style="font-size: 11px; color: var(--color-text-secondary); margin-top: 8px; display: none;">
                         暂无自选，去搜索股票后点击“+自选”
                     </div>
+                    <button id="btnSyncCloud" class="preset-btn" style="width: 100%; margin-top: 15px; justify-content: center; background: rgba(0, 122, 255, 0.15); border-color: var(--color-accent); font-weight: bold;">
+                        ☁️ 保存并同步至云端
+                    </button>
                 </div>
             </div>
 
@@ -2398,25 +2482,11 @@
         function saveFavorites() {
             try {
                 const favCodes = favoriteStocks.map(stock => String(stock.code));
-                // 1. 保存在 localStorage 作为双保险
                 localStorage.setItem('my_favorite_stocks', JSON.stringify(favCodes));
-                
-                // 2. 尝试发送给本地 server.py 以写入 favorites.json
-                fetch('/api/save_favorites', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(favCodes)
-                }).then(res => res.json()).then(data => {
-                    if (data.status === 'success') {
-                        console.log('Successfully saved to favorites.json via API.');
-                    }
-                }).catch(err => {
-                    console.log('Local server API not available, fell back to localStorage.');
-                });
             } catch (e) {
-                console.error('Failed to save favorites:', e);
+                console.error('Failed to save favorites to localStorage:', e);
             }
-            showToast('⭐ 自选股更新已持久化', false);
+            showToast('⭐ 自选股已暂存本地内存，点击[☁️ 保存并同步至云端]按钮上传数据', false);
         }
 
         function loadFavorites() {
@@ -4737,7 +4807,125 @@
                 btn.style.pointerEvents = 'auto';
             }
         });
+
+        // --- 同步至云端逻辑 ---
+        document.getElementById('btnSyncCloud').addEventListener('click', function() {
+            const modal = document.getElementById('syncModal');
+            const tokenInput = document.getElementById('githubTokenInput');
+            const savedToken = localStorage.getItem('github_pat');
+            if (savedToken) {
+                tokenInput.value = savedToken;
+            }
+            modal.classList.add('show');
+        });
+
+        function closeSyncModal() {
+            document.getElementById('syncModal').classList.remove('show');
+        }
+
+        async function executeSync() {
+            const tokenInput = document.getElementById('githubTokenInput').value.trim();
+            if (!tokenInput) {
+                alert('请提供 GitHub Token');
+                return;
+            }
+            localStorage.setItem('github_pat', tokenInput);
+            closeSyncModal();
+
+            const btn = document.getElementById('btnSyncCloud');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<span style="margin-right: 4px;">⏳</span> 正在同步...';
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.7';
+
+            try {
+                const repo = 'kangkang4468/a-share-analyzer';
+                const filePath = 'favorites.json';
+                const workflowId = 'update_data.yml';
+                
+                // 1. 获取当前 favorites.json 的 SHA
+                const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
+                    headers: {
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Authorization': `token ${tokenInput}`
+                    }
+                });
+                
+                let sha = null;
+                if (getRes.ok) {
+                    const data = await getRes.json();
+                    sha = data.sha;
+                } else if (getRes.status !== 404) {
+                    throw new Error('无法获取文件 SHA');
+                }
+
+                // 2. 准备新的 JSON 数据并编码为 Base64
+                const favCodes = favoriteStocks.map(stock => String(stock.code));
+                const jsonStr = JSON.stringify(favCodes, null, 2);
+                // 对于纯数字代码，btoa(jsonStr) 足够安全
+                const base64Content = btoa(jsonStr);
+
+                // 3. 更新 favorites.json
+                const putRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Authorization': `token ${tokenInput}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: 'Web UI: Update favorites [skip ci]',
+                        content: base64Content,
+                        sha: sha
+                    })
+                });
+
+                if (!putRes.ok) {
+                    throw new Error('更新 JSON 失败: ' + await putRes.text());
+                }
+
+                // 4. 触发 Actions 更新数据
+                const dispatchRes = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflowId}/dispatches`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Authorization': `token ${tokenInput}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ref: 'main' })
+                });
+
+                if (dispatchRes.ok || dispatchRes.status === 204) {
+                    showToast('✅ 云端同步完成！JSON 已更新并已触发远端执行。');
+                } else {
+                    showToast('⚠️ JSON 已更新，但触发 Actions 失败。');
+                }
+            } catch (err) {
+                console.error('Sync failed:', err);
+                showToast('❌ 同步失败: ' + err.message, true);
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.style.pointerEvents = 'auto';
+                btn.style.opacity = '1';
+            }
+        }
     </script>
+
+    <!-- Token 设置模态框 -->
+    <div class="modal-overlay" id="syncModal">
+        <div class="modal-box">
+            <h3 class="modal-title">☁️ 同步至云端配置</h3>
+            <p style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 15px; line-height: 1.5;">
+                由于纯浏览器环境限制，需通过 GitHub API 更新文件。请输入您的 Personal Access Token (PAT)，该 Token 仅保留在您的本地浏览器缓存中。
+            </p>
+            <label class="modal-label">GitHub Token (需具有 repo 写入权限)</label>
+            <input type="password" id="githubTokenInput" class="modal-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+            <div class="modal-btn-group">
+                <button class="modal-btn modal-btn-cancel" onclick="closeSyncModal()">取消</button>
+                <button class="modal-btn modal-btn-confirm" onclick="executeSync()">确认并同步</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
